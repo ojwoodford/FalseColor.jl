@@ -1,4 +1,5 @@
 *~
+*.autosave
 *#
 /*.tar.gz
 /tmp
