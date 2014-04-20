@@ -1,5 +1,6 @@
 module FalseColor
-#include("colormaps.jl")
+using Devectorize
+include("colormaps.jl")
 
 # ColorMap type for regularly spaced colormaps
 immutable ColorMapRegular
@@ -30,7 +31,7 @@ end
 end
 
 # A generic colormap constructor
-function ColorMap(table::Array{Float64, 2})
+function ColorMap(table::Array{Float64, 2}, varargs...)
 if size(table, 2) < 2
     error("Colormaps require at least 2 entries (2nd dimension");
 end
@@ -48,8 +49,28 @@ else
 end
 end
 
-function real2rgb_(data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
-out = Array(Float64, size(data, 1)*size(data, 2), 3)
+# Determine the data range
+function getrange{T<:Real,N}(data::AbstractArray{T,N}, varargs...)
+# Check if the range was given as input
+for i = 1:length(varargs)
+    if (length(range[i]) == 2 && typeof(range[i][1]) <: Real && typeof(range[i][2]) <: Real)
+        return (range[i][1], range[i][2])
+    end
+end
+# Compute the range of the data
+try
+    return extremum(data)
+catch
+    # Support v0.2
+    return (minimum(data), maximum(data))
+end
+end
+
+function real2rgb!(out_::AbstractArray{Float64, 3}, data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
+        println("here 1")
+# Check the output size
+assert(size(out_, 1) == size(data, 1) && size(out_, 2) == size(data, 2) && size(out_, 3) == 3)
+out = reshape(out_, length(data), 3)
 f = (size(cmap.colors, 2) - 1) / (high - low)
 # Go over each pixel
 @inbounds begin
@@ -68,25 +89,41 @@ for i = 1:length(data)
     end
 end
 end
-return reshape(out, size(data, 1), size(data, 2), 3)
 end
 
-function real2rgb(data::Array{Float64, 2}, cmap::Array{Float64, 2}, range...)
-if length(range) > 0 && length(range[1]) == 2
-    low = range[1][1]
-    high = range[1][2]
+function real2rgb(data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
+out = Array(Float64, size(data, 1), size(data, 2), 3)
+real2rgb!(out, data, cmap, low, high)
+out
+end
+
+function real2rgb{T<:Real,U<:Real}(data::Array{T, 2}, cmap::AbstractArray{U, 2}, varargs...)
+# Check for a range
+(low, high) = getrange(data, varargs...)
+# Do the conversion
+real2rgb(convert(Array{Float64, 2}, data), ColorMap(convert(Array{Float64, 2}, cmap)), float64(low), float64(high))
+end
+
+function sc!{T<:Real,N}(out::AbstractArray{Float64,3}, data::AbstractArray{T,N}, varargs...)
+assert(size(out, 1) == size(data, 1) && size(out, 2) == size(data, 2) && size(out, 3) == 3 && ndims(data) <= 3)
+(low, high) = getrange(data, varargs...)
+real2rgb!(out, data, ColorMap(jet()), low, high)
+end
+
+function sc{T<:Real,N}(data::Array{T,N}, varargs...)
+out = Array(Float64, size(data, 1), size(data, 2), 3, size(data)[4:end]...)
+n = length(out) / (size(data, 1) * size(data, 2) * 3)
+if n == 1
+    sc!(out, data, varargs...)
 else
-    # Compute the range of the data
-    try
-        (low, high) = extremum(data)
-    catch
-        (low, high) = (minimum(data), maximum(data))
+    # Do multiple images at once
+    for i = 1:n
+        sc!(sub(out,:,:,:,i), sub(data,:,:,:,i), varargs...)
     end
 end
-# Do the conversion
-real2rgb_(data, ColorMap(cmap), float64(low), float64(high))
+out
 end
 
 # Functions to be visible outside
-export real2rgb
+export real2rgb, real2rgb!, sc, sc!
 end
