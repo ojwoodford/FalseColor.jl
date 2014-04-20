@@ -20,13 +20,14 @@ end
 immutable ColorMapIrregular
 colors::Array{Float64, 2}
 x::Vector{Float64}
+w::Vector{Float64}
 end
 
 # Lookup colors in irregularly spaced colormaps - assumes x is within (0,size(cmap.data, 2)-1)
 function lookupcolor(cmap::ColorMapIrregular, x::Float64)
 @inbounds begin
-xi = searchsortedlast(cmap.x[:,1], x)
-w = (x - cmap.x[xi,1]) * cmap.x[xi,2]
+xi = searchsortedlast(cmap.x, x)
+w = (x - cmap.x[xi]) * cmap.w[xi]
 return cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1.0 - w)
 end
 end
@@ -43,10 +44,10 @@ end
 if n == 3
    return ColorMapRegular(table)
 else
-   x = table[end,1:end-1]
-   y = cumsum(x)
-   y = [0.0 y[1:end-1] / y[end]]
-   return ColorMapIrregular(table[1:end-1,:], [x' y'])
+   w = vec(table[end,1:end-1])
+   x = cumsum(w)
+   x = [0.0, (x[1:end-1] * (length(x) / x[end]))]
+   return ColorMapIrregular(table[1:end-1,:], x, w)
 end
 end
 
