@@ -1,4 +1,5 @@
 module FalseColor
+#Using Devectorize
 #include("colormaps.jl")
 
 # ColorMap type for regularly spaced colormaps
@@ -7,11 +8,11 @@ colors::Array{Float64, 2}
 end
 
 # Lookup colors in regularly spaced colormaps - assumes x is within (0,size(cmap.data, 2)-1)
-function lookupcolor!(data::Array{Float64, 2}, cmap::ColorMapRegular, x::Float64)
+function lookupcolor(cmap::ColorMapRegular, x::Float64)
 @inbounds begin
 xi = ceil(x)
 w = xi - x
-data[1,:] = (cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1 - w))'
+return cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1.0 - w)
 end
 end
 
@@ -22,11 +23,11 @@ x::Vector{Float64}
 end
 
 # Lookup colors in irregularly spaced colormaps - assumes x is within (0,size(cmap.data, 2)-1)
-function lookupcolor!(data::Array{Float64, 2}, cmap::ColorMapIrregular, x::Float64)
+function lookupcolor(cmap::ColorMapIrregular, x::Float64)
 @inbounds begin
 xi = searchsortedlast(cmap.x[:,1], x)
 w = (x - cmap.x[xi,1]) * cmap.x[xi,2]
-data[1,:] = (cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1 - w))'
+return cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1.0 - w)
 end
 end
 
@@ -53,18 +54,18 @@ function real2rgb_(data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMap
 out = Array(Float64, size(data, 1)*size(data, 2), 3)
 f = (size(cmap.colors, 2) - 1) / (high - low)
 # Go over each pixel
-@inbounds begin
+#@inbounds begin
 for i = 1:length(data)
     if data[i] <= low
         out[i,:] = cmap.colors[:,1]'
     elseif data[i] >= high
         out[i,:] = cmap.colors[:,end]'
     else
-        lookupcolor!(out[i,:], cmap, (data[i] - low) * f)
+        out[i,:] = lookupcolor(cmap, (data[i] - low) * f)
     end
 end
-end
-reshape(out, size(data, 1), size(data, 2), 3)
+#end
+return reshape(out, size(data, 1), size(data, 2), 3)
 end
 
 function real2rgb(data::Array{Float64, 2}, cmap::Array{Float64, 2}, range...)
@@ -80,7 +81,7 @@ else
     end
 end
 # Do the conversion
-real2rgb_(data, ColorMap(cmap), low, high)
+real2rgb_(data, ColorMap(cmap), float64(low), float64(high))
 end
 
 # Functions to be visible outside
