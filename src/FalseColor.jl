@@ -67,7 +67,6 @@ end
 end
 
 function real2rgb!(out_::AbstractArray{Float64, 3}, data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
-        println("here 1")
 # Check the output size
 assert(size(out_, 1) == size(data, 1) && size(out_, 2) == size(data, 2) && size(out_, 3) == 3)
 out = reshape(out_, length(data), 3)
