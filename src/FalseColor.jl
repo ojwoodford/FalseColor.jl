@@ -1,5 +1,4 @@
 module FalseColor
-#Using Devectorize
 #include("colormaps.jl")
 
 # ColorMap type for regularly spaced colormaps
@@ -8,12 +7,10 @@ colors::Array{Float64, 2}
 end
 
 # Lookup colors in regularly spaced colormaps - assumes x is within (0,size(cmap.data, 2)-1)
-function lookupcolor(cmap::ColorMapRegular, x::Float64)
-@inbounds begin
+function lookupindex(cmap::ColorMapRegular, x::Float64)
 xi = ceil(x)
 w = xi - x
-return cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1.0 - w)
-end
+(xi, w)
 end
 
 # ColorMap type for irregularly spaced colormaps
@@ -24,12 +21,12 @@ w::Vector{Float64}
 end
 
 # Lookup colors in irregularly spaced colormaps - assumes x is within (0,size(cmap.data, 2)-1)
-function lookupcolor(cmap::ColorMapIrregular, x::Float64)
-@inbounds begin
+function lookupindex(cmap::ColorMapIrregular, x::Float64)
 xi = searchsortedlast(cmap.x, x)
+@inbounds begin
 w = (x - cmap.x[xi]) * cmap.w[xi]
-return cmap.colors[:,xi] * w + cmap.colors[:,xi+1] * (1.0 - w)
 end
+(xi, w)
 end
 
 # A generic colormap constructor
@@ -47,7 +44,7 @@ else
    w = vec(table[end,1:end-1])
    x = cumsum(w)
    x = [0.0, (x[1:end-1] * (length(x) / x[end]))]
-   return ColorMapIrregular(table[1:end-1,:], x, w)
+   return ColorMapIrregular(table[1:end-1,:], x, 1.0./w)
 end
 end
 
@@ -55,17 +52,22 @@ function real2rgb_(data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMap
 out = Array(Float64, size(data, 1)*size(data, 2), 3)
 f = (size(cmap.colors, 2) - 1) / (high - low)
 # Go over each pixel
-#@inbounds begin
+@inbounds begin
 for i = 1:length(data)
     if data[i] <= low
         out[i,:] = cmap.colors[:,1]'
     elseif data[i] >= high
         out[i,:] = cmap.colors[:,end]'
     else
-        out[i,:] = lookupcolor(cmap, (data[i] - low) * f)
+        (xi, w) = lookupindex(cmap, (data[i] - low) * f)
+        xi_ = xi + 1
+        w_ = 1.0 - w
+        out[i,1] = cmap.colors[1,xi] * w + cmap.colors[1,xi_] * w_
+        out[i,2] = cmap.colors[2,xi] * w + cmap.colors[2,xi_] * w_
+        out[i,3] = cmap.colors[3,xi] * w + cmap.colors[3,xi_] * w_
     end
 end
-#end
+end
 return reshape(out, size(data, 1), size(data, 2), 3)
 end
 
