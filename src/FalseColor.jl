@@ -66,7 +66,24 @@ catch
 end
 end
 
-function real2rgb!(out_::AbstractArray{Float64, 3}, data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
+function real2rgb_pp(data::Float64, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64, f::Float64)
+# Per-pixel conversion
+@inbounds begin
+if data <= low
+    return cmap.colors[:,1]
+elseif data >= high
+    return cmap.colors[:,end]
+else
+    (xi, w) = lookupindex(cmap, (data - low) * f)
+    xi_ = xi + 1
+    w_ = 1.0 - w
+    @devec out = cmap.colors[:,xi] .* w + cmap.colors[:,xi_] .* w_
+    return out
+end
+end
+end
+
+function real2rgb!{T<:Real}(out_::AbstractArray{Float64, 3}, data::Array{T, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
 # Check the output size
 assert(size(out_, 1) == size(data, 1) && size(out_, 2) == size(data, 2) && size(out_, 3) == 3)
 out = reshape(out_, length(data), 3)
@@ -74,33 +91,22 @@ f = (size(cmap.colors, 2) - 1) / (high - low)
 # Go over each pixel
 @inbounds begin
 for i = 1:length(data)
-    if data[i] <= low
-        out[i,:] = cmap.colors[:,1]'
-    elseif data[i] >= high
-        out[i,:] = cmap.colors[:,end]'
-    else
-        (xi, w) = lookupindex(cmap, (data[i] - low) * f)
-        xi_ = xi + 1
-        w_ = 1.0 - w
-        out[i,1] = cmap.colors[1,xi] * w + cmap.colors[1,xi_] * w_
-        out[i,2] = cmap.colors[2,xi] * w + cmap.colors[2,xi_] * w_
-        out[i,3] = cmap.colors[3,xi] * w + cmap.colors[3,xi_] * w_
-    end
+    out[i,:] = real2rgb_pp(float64(data[i]), cmap, low, high, f)
 end
 end
 end
 
-function real2rgb(data::Array{Float64, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
+function real2rgb{T<:Real}(data::Array{Real, 2}, cmap::Union(ColorMapRegular,ColorMapIrregular), low::Float64, high::Float64)
 out = Array(Float64, size(data, 1), size(data, 2), 3)
 real2rgb!(out, data, cmap, low, high)
 out
 end
 
-function real2rgb{T<:Real,U<:Real}(data::Array{T, 2}, cmap::AbstractArray{U, 2}, varargs...)
+function real2rgb{U<:Real}(data, cmap::AbstractArray{U, 2}, varargs...)
 # Check for a range
 (low, high) = getrange(data, varargs...)
 # Do the conversion
-real2rgb(convert(Array{Float64, 2}, data), ColorMap(convert(Array{Float64, 2}, cmap)), float64(low), float64(high))
+real2rgb(data, ColorMap(convert(Array{Float64, 2}, cmap)), float64(low), float64(high))
 end
 
 function sc!{T<:Real,N}(out::AbstractArray{Float64,3}, data::AbstractArray{T,N}, varargs...)
